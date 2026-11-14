@@ -101,30 +101,14 @@ public sealed class LocalBotBalancer : BasePlugin
     private void QueueReconcile()
     {
         if (_applyQueued || !_config.Enabled) return;
-        if (_config.ApplyOnlyBetweenRounds)
-        {
-            if (!_safeToApply) return;
-            if (HasLivingHumans())
-            {
-                _safeToApply = false;
-                return;
-            }
-        }
+        if (_config.ApplyOnlyBetweenRounds && !_safeToApply) return;
 
         _applyQueued = true;
         AddTimer(_config.ReconcileDelaySeconds, () =>
         {
             _applyQueued = false;
             if (!_config.Enabled) return;
-            if (_config.ApplyOnlyBetweenRounds)
-            {
-                if (!_safeToApply) return;
-                if (HasLivingHumans())
-                {
-                    _safeToApply = false;
-                    return;
-                }
-            }
+            if (_config.ApplyOnlyBetweenRounds && !_safeToApply) return;
             Reconcile();
         });
     }
@@ -140,12 +124,7 @@ public sealed class LocalBotBalancer : BasePlugin
         var aliveHumansCt = players.Count(IsAliveHumanOnTeamCt);
         var aliveHumansT = players.Count(IsAliveHumanOnTeamT);
 
-        if (_config.ApplyOnlyBetweenRounds &&
-            (!_safeToApply || aliveHumansCt + aliveHumansT > 0))
-        {
-            if (aliveHumansCt + aliveHumansT > 0) _safeToApply = false;
-            return;
-        }
+        if (_config.ApplyOnlyBetweenRounds && !_safeToApply) return;
 
         var botQuota = GetBotQuota();
         if (botQuota != 0)
@@ -258,9 +237,6 @@ public sealed class LocalBotBalancer : BasePlugin
     private static bool IsAliveHumanOnTeamT(CCSPlayerController player) =>
         player.Team == CsTeam.Terrorist && IsLivingHuman(player);
 
-    private bool HasLivingHumans() =>
-        Utilities.GetPlayers().Any(p => p != null && p.IsValid && IsLivingHuman(p));
-
     private int RemoveExcessBots(List<CCSPlayerController> bots, int desired)
     {
         var excess = bots.Count - desired;
@@ -297,9 +273,8 @@ public sealed class LocalBotBalancer : BasePlugin
     [ConsoleCommand("css_lbb_reconcile", "Queue a safe bot balance update.")]
     public void ReconcileCommand(CCSPlayerController? player, CommandInfo command)
     {
-        if (_config.ApplyOnlyBetweenRounds && (!_safeToApply || HasLivingHumans()))
+        if (_config.ApplyOnlyBetweenRounds && !_safeToApply)
         {
-            _safeToApply = false;
             var msg = "[LBB] Сейчас идёт раунд. Балансировка будет выполнена после его окончания.";
             if (player != null && player.IsValid) player.PrintToChat(msg);
             else Console.WriteLine(msg);

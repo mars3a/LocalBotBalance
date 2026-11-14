@@ -4,9 +4,10 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 
 ## Important behavior
 
-- With `ApplyOnlyBetweenRounds=true`, changes are made only after `round_end` and
-  only while no human player is alive. Loading or hot-reloading during a round
-  does not assume that the round is safe; the plugin waits for `round_end`.
+- With `ApplyOnlyBetweenRounds=true`, changes are made only after `round_end`.
+  Loading or hot-reloading during a round does not assume that the round is
+  safe; the plugin waits for `round_end`. Alive-human counts are logged for
+  diagnostics; round events determine whether changes are safe.
 - Counts human CT/T players separately from bots.
 - With `MaxPlayers=10` and `FillEmptySlots=true`, targets five players per team,
   counting humans and bots. `MaxPlayers` is the plugin's match cap, not the
