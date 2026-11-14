@@ -1,0 +1,13 @@
+{
+  "Enabled": true,
+  "MaxPlayers": 10,
+  "FillEmptySlots": true,
+  "RemoveBotsForHumans": true,
+  "ApplyOnlyBetweenRounds": true,
+  "BalanceTeams": true,
+  "BotDifficulty": 2,
+  "MinimumBots": 0,
+  "MaximumBots": 10,
+  "ReconcileDelaySeconds": 0.5,
+  "Debug": true
+}
