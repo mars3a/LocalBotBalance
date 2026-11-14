@@ -1,5 +1,7 @@
 # LocalBotBalancer 1.0.0
 
+[Русская версия](README.ru.md)
+
 CounterStrikeSharp C# plugin prototype for a private CS2 server.
 
 ## Important behavior
