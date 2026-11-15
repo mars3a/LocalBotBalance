@@ -2,7 +2,7 @@
   "Enabled": true,
   "MaxPlayers": 10,
   "FillEmptySlots": true,
-  "ReserveSlotForSecondHuman": true,
+  "ReservedHumanSlotsPerTeam": 1,
   "RemoveBotsForHumans": true,
   "ApplyOnlyBetweenRounds": true,
   "BalanceTeams": true,

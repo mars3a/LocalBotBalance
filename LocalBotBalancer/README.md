@@ -14,10 +14,11 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 - With `MaxPlayers=10` and `FillEmptySlots=true`, targets five players per team,
   counting humans and bots. `MaxPlayers` is the plugin's match cap, not the
   server's 20-player connection limit.
-- With `ReserveSlotForSecondHuman=true` (default), exactly one connected human
-  means the plugin fills to nine total players, leaving one slot open for a
-  second human. Once a second human is connected, it fills toward the normal
-  5v5 target.
+- `ReservedHumanSlotsPerTeam` (default `1`) leaves that many unoccupied places
+  on each team when filling with bots. This lets incoming humans choose either
+  side. With the default match cap of 10, bot-filled teams target four players
+  each, leaving one place per team open; the setting can be changed or set to
+  `0` to disable reservations.
 - Does not move human players.
 - `MaximumBots` is a global cap.
 - The plugin makes no bot changes unless it can read `bot_quota` and its value is
@@ -31,13 +32,15 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 ## Algorithm
 
 With `MaxPlayers=10`, `FillEmptySlots=true`, and
-`ReserveSlotForSecondHuman=true`:
-- 1 human CT and no human T => 4 CT bots and 4 T bots (9 players total), leaving
-  one open slot for the second human.
-- 1 human CT and 1 human T => target population 5 per side, so 4 bots per side
-  (10 players total).
-- 3 humans CT and 1 human T => 2 CT bots and 4 T bots, reaching the 5-per-team
-  target.
+`ReservedHumanSlotsPerTeam=1`:
+- No humans => 4 bots per team, leaving one place on each team.
+- 1 human CT and no human T => 3 CT bots and 4 T bots; one place remains open
+  on each team.
+- 1 human on each team => 3 bots per team; either team still has room for one
+  more human.
+- 3 humans CT and 1 human T => 1 CT bot and 3 T bots; each team has four players.
+- Reservations are best-effort: if a team already has more humans than its
+  target occupancy, the plugin does not move or remove humans.
 - If one side has more humans than the half-server target, the plugin does not move humans; perfect equality may therefore be impossible without voluntary/forced human switching.
 
 ## Build on Ubuntu 22.04
@@ -105,12 +108,13 @@ css_lbb_reconcile
 
 1. Start with an empty server and inspect `[LocalBotBalancer]` in server logs.
 2. Run `css_lbb_status`.
-3. Keep `bot_quota 0` and disable other bot managers. Join as one human. At
-   round end, verify the plugin leaves one match slot open.
-4. Join a second human. At the next round end, verify bots fill the five-per-team
-   target without exceeding ten total players.
-5. Join another human on a side with bots. At the next round end, verify a bot
-   is removed from that side.
+3. Keep `bot_quota 0` and disable other bot managers. With
+   `ReservedHumanSlotsPerTeam=1`, join as one human. At round end, verify each
+   team has one open place for a human.
+4. Join another human on either team. At the next round end, verify the joining
+   team still has one open place and the match remains within the 10-player cap.
+5. Add humans to both teams and verify that bots are removed as needed to
+   preserve one open place per team.
 6. Check the server never exceeds `MaxPlayers`.
 7. Load/reload during a live round and verify no bots change until round end.
 8. Kill one human during a round: no bot should be added immediately. At round
