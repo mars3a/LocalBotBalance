@@ -46,7 +46,11 @@
 
 ## Сборка в Ubuntu 22.04
 
-Установите .NET 8 SDK (репозиторий Microsoft):
+API CounterStrikeSharp v1.0.380 собран для .NET 10, поэтому плагин нужно собирать
+с помощью .NET 10 SDK. Для загрузки плагина серверный CounterStrikeSharp также
+должен иметь доступ к .NET 10 Runtime.
+
+Установите .NET 10 SDK (репозиторий Microsoft):
 
 ```bash
 sudo apt update
@@ -54,7 +58,7 @@ sudo apt install -y wget ca-certificates
 wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
 sudo dpkg -i /tmp/packages-microsoft-prod.deb
 sudo apt update
-sudo apt install -y dotnet-sdk-8.0
+sudo apt install -y dotnet-sdk-10.0
 dotnet --info
 ```
 
@@ -83,8 +87,8 @@ PLUGIN="$SERVER/addons/counterstrikesharp/plugins/LocalBotBalancer"
 
 sudo systemctl stop cs2
 mkdir -p "$PLUGIN"
-cp bin/Release/net8.0/LocalBotBalancer.dll "$PLUGIN/"
-cp bin/Release/net8.0/LocalBotBalancer.deps.json "$PLUGIN/" 2>/dev/null || true
+cp bin/Release/net10.0/LocalBotBalancer.dll "$PLUGIN/"
+cp bin/Release/net10.0/LocalBotBalancer.deps.json "$PLUGIN/" 2>/dev/null || true
 cp config.json "$PLUGIN/"
 sudo chown -R steam:steam "$PLUGIN"
 sudo systemctl start cs2

@@ -42,7 +42,11 @@ With `MaxPlayers=10`, `FillEmptySlots=true`, and
 
 ## Build on Ubuntu 22.04
 
-Install .NET 8 SDK (Microsoft repository):
+CounterStrikeSharp API v1.0.380 targets .NET 10, so this plugin must be built
+with the .NET 10 SDK. The server's CounterStrikeSharp host must also have access
+to the .NET 10 runtime to load the plugin.
+
+Install the .NET 10 SDK (Microsoft repository):
 
 ```bash
 sudo apt update
@@ -50,7 +54,7 @@ sudo apt install -y wget ca-certificates
 wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
 sudo dpkg -i /tmp/packages-microsoft-prod.deb
 sudo apt update
-sudo apt install -y dotnet-sdk-8.0
+sudo apt install -y dotnet-sdk-10.0
 dotnet --info
 ```
 
@@ -79,8 +83,8 @@ PLUGIN="$SERVER/addons/counterstrikesharp/plugins/LocalBotBalancer"
 
 sudo systemctl stop cs2
 mkdir -p "$PLUGIN"
-cp bin/Release/net8.0/LocalBotBalancer.dll "$PLUGIN/"
-cp bin/Release/net8.0/LocalBotBalancer.deps.json "$PLUGIN/" 2>/dev/null || true
+cp bin/Release/net10.0/LocalBotBalancer.dll "$PLUGIN/"
+cp bin/Release/net10.0/LocalBotBalancer.deps.json "$PLUGIN/" 2>/dev/null || true
 cp config.json "$PLUGIN/"
 sudo chown -R steam:steam "$PLUGIN"
 sudo systemctl start cs2
