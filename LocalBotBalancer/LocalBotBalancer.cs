@@ -13,6 +13,7 @@ public sealed class PluginConfig
     public bool Enabled { get; set; } = true;
     public int MaxPlayers { get; set; } = 10;
     public bool FillEmptySlots { get; set; } = true;
+    public bool ReserveSlotForSecondHuman { get; set; } = true;
     public bool RemoveBotsForHumans { get; set; } = true;
     public bool ApplyOnlyBetweenRounds { get; set; } = true;
     public bool BalanceTeams { get; set; } = true;
@@ -143,16 +144,22 @@ public sealed class LocalBotBalancer : BasePlugin
         var botsT = players.Where(p => p.IsBot && p.Team == CsTeam.Terrorist).ToList();
 
         var maxSlots = Math.Min(_config.MaxPlayers, Server.MaxPlayers);
+        var currentHumans = players.Count(p => !p.IsBot);
+        var populationTarget = maxSlots;
+        if (_config.ReserveSlotForSecondHuman && currentHumans == 1)
+        {
+            populationTarget--;
+        }
+
         var teamTarget = _config.FillEmptySlots
             ? maxSlots / 2
             : Math.Max(humansCt, humansT);
 
         teamTarget = Math.Min(teamTarget, maxSlots / 2);
 
-        var currentHumans = players.Count(p => !p.IsBot);
         var nonTeamBots = players.Count(p => p.IsBot &&
             p.Team != CsTeam.CounterTerrorist && p.Team != CsTeam.Terrorist);
-        var availableBotSlots = Math.Max(0, maxSlots - currentHumans - nonTeamBots);
+        var availableBotSlots = Math.Max(0, populationTarget - currentHumans - nonTeamBots);
         var targetBotsCt = _config.BalanceTeams ? Math.Max(0, teamTarget - humansCt) : 0;
         var targetBotsT = _config.BalanceTeams ? Math.Max(0, teamTarget - humansT) : 0;
         var allowedBots = Math.Min(
@@ -181,7 +188,7 @@ public sealed class LocalBotBalancer : BasePlugin
         }
 
         var currentBots = players.Count(p => p.IsBot);
-        var room = Math.Max(0, maxSlots - players.Count);
+        var room = Math.Max(0, populationTarget - players.Count);
         var botBudget = Math.Max(0, _config.MaximumBots - currentBots);
         var addsRemaining = Math.Min(room, botBudget);
         var plannedCt = botsCt.Count;
@@ -207,7 +214,7 @@ public sealed class LocalBotBalancer : BasePlugin
             Console.WriteLine(
                 $"[LocalBotBalancer] Humans CT/T={humansCt}/{humansT}; alive humans CT/T={aliveHumansCt}/{aliveHumansT}; " +
                 $"bots CT/T={botsCt.Count}/{botsT.Count}; target CT/T={desiredCt}/{desiredT}; " +
-                $"slots={maxSlots}; bot_quota={botQuota}.");
+                $"population target={populationTarget}/{maxSlots}; bot_quota={botQuota}.");
         }
     }
 

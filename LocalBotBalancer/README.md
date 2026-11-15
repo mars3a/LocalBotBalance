@@ -14,6 +14,10 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 - With `MaxPlayers=10` and `FillEmptySlots=true`, targets five players per team,
   counting humans and bots. `MaxPlayers` is the plugin's match cap, not the
   server's 20-player connection limit.
+- With `ReserveSlotForSecondHuman=true` (default), exactly one connected human
+  means the plugin fills to nine total players, leaving one slot open for a
+  second human. Once a second human is connected, it fills toward the normal
+  5v5 target.
 - Does not move human players.
 - `MaximumBots` is a global cap.
 - The plugin makes no bot changes unless it can read `bot_quota` and its value is
@@ -26,9 +30,12 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 
 ## Algorithm
 
-With `MaxPlayers=10`, `FillEmptySlots=true`:
-- 1 human CT and 1 human T => target population 5 per side, so 4 bots per side.
-- 1 human CT and no human T => 4 CT bots and 5 T bots (10 players total).
+With `MaxPlayers=10`, `FillEmptySlots=true`, and
+`ReserveSlotForSecondHuman=true`:
+- 1 human CT and no human T => 4 CT bots and 4 T bots (9 players total), leaving
+  one open slot for the second human.
+- 1 human CT and 1 human T => target population 5 per side, so 4 bots per side
+  (10 players total).
 - 3 humans CT and 1 human T => 2 CT bots and 4 T bots, reaching the 5-per-team
   target.
 - If one side has more humans than the half-server target, the plugin does not move humans; perfect equality may therefore be impossible without voluntary/forced human switching.
@@ -94,15 +101,18 @@ css_lbb_reconcile
 
 1. Start with an empty server and inspect `[LocalBotBalancer]` in server logs.
 2. Run `css_lbb_status`.
-3. Keep `bot_quota 0` and disable other bot managers. Join as one human CT and
-   one human T. At round end, verify bots fill the five-per-team targets.
-4. Join another human on a side with bots. At the next round end, verify a bot is removed from that side.
-5. Check the server never exceeds `MaxPlayers`.
-6. Load/reload during a live round and verify no bots change until round end.
-7. Kill one human during a round: no bot should be added immediately. At round
+3. Keep `bot_quota 0` and disable other bot managers. Join as one human. At
+   round end, verify the plugin leaves one match slot open.
+4. Join a second human. At the next round end, verify bots fill the five-per-team
+   target without exceeding ten total players.
+5. Join another human on a side with bots. At the next round end, verify a bot
+   is removed from that side.
+6. Check the server never exceeds `MaxPlayers`.
+7. Load/reload during a live round and verify no bots change until round end.
+8. Kill one human during a round: no bot should be added immediately. At round
    end, verify reconciliation occurs.
-8. Test disconnects and map changes.
-9. Inspect logs for errors.
+9. Test disconnects and map changes.
+10. Inspect logs for errors.
 
 ## Rollback
 
