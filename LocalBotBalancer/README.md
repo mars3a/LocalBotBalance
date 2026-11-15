@@ -14,6 +14,11 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 - With `MaxPlayers=10` and `FillEmptySlots=true`, targets five players per team,
   counting humans and bots. `MaxPlayers` is the plugin's match cap, not the
   server's 20-player connection limit.
+- `ReservedHumanSlotsPerTeam` (default `1`) leaves that many unoccupied places
+  on each team when filling with bots. This lets incoming humans choose either
+  side. With the default match cap of 10, bot-filled teams target four players
+  each, leaving one place per team open; the setting can be changed or set to
+  `0` to disable reservations.
 - Does not move human players.
 - `MaximumBots` is a global cap.
 - The plugin makes no bot changes unless it can read `bot_quota` and its value is
@@ -26,16 +31,25 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 
 ## Algorithm
 
-With `MaxPlayers=10`, `FillEmptySlots=true`:
-- 1 human CT and 1 human T => target population 5 per side, so 4 bots per side.
-- 1 human CT and no human T => 4 CT bots and 5 T bots (10 players total).
-- 3 humans CT and 1 human T => 2 CT bots and 4 T bots, reaching the 5-per-team
-  target.
+With `MaxPlayers=10`, `FillEmptySlots=true`, and
+`ReservedHumanSlotsPerTeam=1`:
+- No humans => 4 bots per team, leaving one place on each team.
+- 1 human CT and no human T => 3 CT bots and 4 T bots; one place remains open
+  on each team.
+- 1 human on each team => 3 bots per team; either team still has room for one
+  more human.
+- 3 humans CT and 1 human T => 1 CT bot and 3 T bots; each team has four players.
+- Reservations are best-effort: if a team already has more humans than its
+  target occupancy, the plugin does not move or remove humans.
 - If one side has more humans than the half-server target, the plugin does not move humans; perfect equality may therefore be impossible without voluntary/forced human switching.
 
 ## Build on Ubuntu 22.04
 
-Install .NET 8 SDK (Microsoft repository):
+CounterStrikeSharp API v1.0.380 targets .NET 10, so this plugin must be built
+with the .NET 10 SDK. The server's CounterStrikeSharp host must also have access
+to the .NET 10 runtime to load the plugin.
+
+Install the .NET 10 SDK (Microsoft repository):
 
 ```bash
 sudo apt update
@@ -43,7 +57,7 @@ sudo apt install -y wget ca-certificates
 wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb
 sudo dpkg -i /tmp/packages-microsoft-prod.deb
 sudo apt update
-sudo apt install -y dotnet-sdk-8.0
+sudo apt install -y dotnet-sdk-10.0
 dotnet --info
 ```
 
@@ -72,8 +86,8 @@ PLUGIN="$SERVER/addons/counterstrikesharp/plugins/LocalBotBalancer"
 
 sudo systemctl stop cs2
 mkdir -p "$PLUGIN"
-cp bin/Release/net8.0/LocalBotBalancer.dll "$PLUGIN/"
-cp bin/Release/net8.0/LocalBotBalancer.deps.json "$PLUGIN/" 2>/dev/null || true
+cp bin/Release/net10.0/LocalBotBalancer.dll "$PLUGIN/"
+cp bin/Release/net10.0/LocalBotBalancer.deps.json "$PLUGIN/" 2>/dev/null || true
 cp config.json "$PLUGIN/"
 sudo chown -R steam:steam "$PLUGIN"
 sudo systemctl start cs2
@@ -94,15 +108,19 @@ css_lbb_reconcile
 
 1. Start with an empty server and inspect `[LocalBotBalancer]` in server logs.
 2. Run `css_lbb_status`.
-3. Keep `bot_quota 0` and disable other bot managers. Join as one human CT and
-   one human T. At round end, verify bots fill the five-per-team targets.
-4. Join another human on a side with bots. At the next round end, verify a bot is removed from that side.
-5. Check the server never exceeds `MaxPlayers`.
-6. Load/reload during a live round and verify no bots change until round end.
-7. Kill one human during a round: no bot should be added immediately. At round
+3. Keep `bot_quota 0` and disable other bot managers. With
+   `ReservedHumanSlotsPerTeam=1`, join as one human. At round end, verify each
+   team has one open place for a human.
+4. Join another human on either team. At the next round end, verify the joining
+   team still has one open place and the match remains within the 10-player cap.
+5. Add humans to both teams and verify that bots are removed as needed to
+   preserve one open place per team.
+6. Check the server never exceeds `MaxPlayers`.
+7. Load/reload during a live round and verify no bots change until round end.
+8. Kill one human during a round: no bot should be added immediately. At round
    end, verify reconciliation occurs.
-8. Test disconnects and map changes.
-9. Inspect logs for errors.
+9. Test disconnects and map changes.
+10. Inspect logs for errors.
 
 ## Rollback
 

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Timers;
@@ -13,6 +14,7 @@ public sealed class PluginConfig
     public bool Enabled { get; set; } = true;
     public int MaxPlayers { get; set; } = 10;
     public bool FillEmptySlots { get; set; } = true;
+    public int ReservedHumanSlotsPerTeam { get; set; } = 1;
     public bool RemoveBotsForHumans { get; set; } = true;
     public bool ApplyOnlyBetweenRounds { get; set; } = true;
     public bool BalanceTeams { get; set; } = true;
@@ -71,6 +73,10 @@ public sealed class LocalBotBalancer : BasePlugin
             _config.MinimumBots = Math.Max(0, _config.MinimumBots);
             _config.MaximumBots = Math.Clamp(_config.MaximumBots, 0, _config.MaxPlayers);
             _config.MinimumBots = Math.Min(_config.MinimumBots, _config.MaximumBots);
+            _config.ReservedHumanSlotsPerTeam = Math.Clamp(
+                _config.ReservedHumanSlotsPerTeam,
+                0,
+                _config.MaxPlayers / 2);
             _config.ReconcileDelaySeconds = Math.Clamp(_config.ReconcileDelaySeconds, 0.5f, 15.0f);
         }
         catch (Exception ex)
@@ -143,18 +149,19 @@ public sealed class LocalBotBalancer : BasePlugin
         var botsT = players.Where(p => p.IsBot && p.Team == CsTeam.Terrorist).ToList();
 
         var maxSlots = Math.Min(_config.MaxPlayers, Server.MaxPlayers);
+        var currentHumans = players.Count(p => !p.IsBot);
         var teamTarget = _config.FillEmptySlots
             ? maxSlots / 2
             : Math.Max(humansCt, humansT);
 
         teamTarget = Math.Min(teamTarget, maxSlots / 2);
+        var botTeamTarget = Math.Max(0, teamTarget - _config.ReservedHumanSlotsPerTeam);
 
-        var currentHumans = players.Count(p => !p.IsBot);
         var nonTeamBots = players.Count(p => p.IsBot &&
             p.Team != CsTeam.CounterTerrorist && p.Team != CsTeam.Terrorist);
         var availableBotSlots = Math.Max(0, maxSlots - currentHumans - nonTeamBots);
-        var targetBotsCt = _config.BalanceTeams ? Math.Max(0, teamTarget - humansCt) : 0;
-        var targetBotsT = _config.BalanceTeams ? Math.Max(0, teamTarget - humansT) : 0;
+        var targetBotsCt = _config.BalanceTeams ? Math.Max(0, botTeamTarget - humansCt) : 0;
+        var targetBotsT = _config.BalanceTeams ? Math.Max(0, botTeamTarget - humansT) : 0;
         var allowedBots = Math.Min(
             Math.Min(targetBotsCt + targetBotsT, Math.Max(0, _config.MaximumBots - nonTeamBots)),
             availableBotSlots);
@@ -206,8 +213,9 @@ public sealed class LocalBotBalancer : BasePlugin
         {
             Console.WriteLine(
                 $"[LocalBotBalancer] Humans CT/T={humansCt}/{humansT}; alive humans CT/T={aliveHumansCt}/{aliveHumansT}; " +
-                $"bots CT/T={botsCt.Count}/{botsT.Count}; target CT/T={desiredCt}/{desiredT}; " +
-                $"slots={maxSlots}; bot_quota={botQuota}.");
+                $"bots CT/T={botsCt.Count}/{botsT.Count}; target bots CT/T={desiredCt}/{desiredT}; " +
+                $"reserved human slots/team={_config.ReservedHumanSlotsPerTeam}; " +
+                $"match cap={maxSlots}; bot_quota={botQuota}.");
         }
     }
 
