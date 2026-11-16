@@ -12,10 +12,15 @@
   </PropertyGroup>
 
   <!-- Preferred: build against the exact API DLL installed on the server.
-       Set CSSHARP_PATH to the folder that contains CounterStrikeSharp.API.dll. -->
+       Set CSSHARP_PATH to the folder that contains CounterStrikeSharp.API.dll.
+       The API depends on Microsoft.Extensions.* (logging, DI abstractions); a plain DLL reference
+       does not bring them in, so the ones shipped next to the API DLL are referenced too. -->
   <ItemGroup Condition="'$(CSSHARP_PATH)' != ''">
     <Reference Include="CounterStrikeSharp.API">
       <HintPath>$(CSSHARP_PATH)/CounterStrikeSharp.API.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="$(CSSHARP_PATH)/Microsoft.Extensions.*.dll">
       <Private>false</Private>
     </Reference>
   </ItemGroup>
