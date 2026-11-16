@@ -153,6 +153,72 @@ cp LocalBotBalancer.example.json "$CFG/LocalBotBalancer.json"
 If you used 1.0.0, its `config.json` next to the DLL is no longer read; copy
 your values into the new file.
 
+## Install / update directly from Git
+
+Run these commands on the game server. The server needs `git` and the .NET 10 SDK
+(see "Build" above). Replace paths and the service name with yours.
+
+**First time: clone the repository**
+
+```bash
+sudo apt install -y git
+cd /home/steam
+git clone https://github.com/mars3a/LocalBotBalance.git
+cd LocalBotBalance
+git checkout feature/local-bot-balancer   # until it is merged; afterwards use: main
+```
+
+If the repository is private, clone over SSH with a read-only deploy key
+(`git clone git@github.com:mars3a/LocalBotBalance.git`) or use an HTTPS
+personal access token.
+
+**Install or update (same steps every time)**
+
+```bash
+cd /home/steam/LocalBotBalance
+git pull --ff-only
+
+SERVER=/home/steam/cs2/game/csgo
+PLUGIN="$SERVER/addons/counterstrikesharp/plugins/LocalBotBalancer"
+
+CSSHARP_PATH="$SERVER/addons/counterstrikesharp/api" dotnet build -c Release
+```
+
+Continue only if the build finished with `0 Error(s)`:
+
+```bash
+sudo systemctl stop cs2
+mkdir -p "$PLUGIN"
+cp bin/Release/net10.0/LocalBotBalancer.dll "$PLUGIN/"
+cp bin/Release/net10.0/LocalBotBalancer.deps.json "$PLUGIN/" 2>/dev/null || true
+sudo chown -R steam:steam "$PLUGIN"
+sudo systemctl start cs2
+```
+
+Notes:
+
+- Updating does not touch your settings: the config lives in
+  `configs/plugins/LocalBotBalancer/`, outside the plugin folder.
+- If the build fails, do not run the second block: `git pull` has already
+  changed the sources, but the old DLL on the server is still in place and the
+  server keeps running. Fix the problem or roll back with the commands below.
+- Restarting the server is the reliable way to load a new DLL.
+  `css_plugins reload LocalBotBalancer` may also work on a test server, but a
+  DLL that is currently loaded can be locked or cached, so do not rely on it.
+- Check the log after the start for the "Loaded" line from the plugin.
+
+**Switch branch or roll back to an earlier version**
+
+```bash
+cd /home/steam/LocalBotBalance
+git fetch --all --tags
+git log --oneline -10                 # find the commit you want
+git checkout <commit-or-tag>          # or: git checkout main
+# then repeat the build and copy steps above
+```
+
+To return to the latest version afterwards: `git checkout main && git pull --ff-only`.
+
 ## Console commands
 
 All commands require the `@css/root` permission (the server console is always

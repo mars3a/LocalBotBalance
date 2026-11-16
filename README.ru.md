@@ -159,6 +159,73 @@ cp LocalBotBalancer.example.json "$CFG/LocalBotBalancer.json"
 Если вы использовали 1.0.0, его `config.json` рядом с DLL больше не читается;
 перенесите значения в новый файл.
 
+## Установка и обновление напрямую из Git
+
+Команды выполняются на игровом сервере. На нём должны быть `git` и .NET 10 SDK
+(см. раздел о сборке выше). Пути и имя службы замените на свои.
+
+**Первый раз: клонирование репозитория**
+
+```bash
+sudo apt install -y git
+cd /home/steam
+git clone https://github.com/mars3a/LocalBotBalance.git
+cd LocalBotBalance
+git checkout feature/local-bot-balancer   # пока не слито; после слияния: main
+```
+
+Если репозиторий приватный, клонируйте по SSH с read-only deploy key
+(`git clone git@github.com:mars3a/LocalBotBalance.git`) или используйте
+персональный токен доступа для HTTPS.
+
+**Установка и обновление (каждый раз одни и те же шаги)**
+
+```bash
+cd /home/steam/LocalBotBalance
+git pull --ff-only
+
+SERVER=/home/steam/cs2/game/csgo
+PLUGIN="$SERVER/addons/counterstrikesharp/plugins/LocalBotBalancer"
+
+CSSHARP_PATH="$SERVER/addons/counterstrikesharp/api" dotnet build -c Release
+```
+
+Продолжайте только если сборка завершилась с `0 Error(s)`:
+
+```bash
+sudo systemctl stop cs2
+mkdir -p "$PLUGIN"
+cp bin/Release/net10.0/LocalBotBalancer.dll "$PLUGIN/"
+cp bin/Release/net10.0/LocalBotBalancer.deps.json "$PLUGIN/" 2>/dev/null || true
+sudo chown -R steam:steam "$PLUGIN"
+sudo systemctl start cs2
+```
+
+Примечания:
+
+- Обновление не затрагивает ваши настройки: конфиг лежит в
+  `configs/plugins/LocalBotBalancer/`, вне папки плагина.
+- Если сборка завершилась ошибкой, второй блок не выполняйте: `git pull` уже
+  изменил исходники, но старая DLL на сервере осталась на месте, а сервер
+  продолжает работать. Исправьте проблему или откатитесь командами ниже.
+- Надёжный способ загрузить новую DLL — перезапуск сервера.
+  `css_plugins reload LocalBotBalancer` может сработать на тестовом сервере, но
+  загруженная DLL может быть заблокирована или закэширована, поэтому не
+  рассчитывайте на это.
+- После запуска проверьте в журнале строку «Loaded» от плагина.
+
+**Переключение ветки или откат к более ранней версии**
+
+```bash
+cd /home/steam/LocalBotBalance
+git fetch --all --tags
+git log --oneline -10                 # найдите нужный коммит
+git checkout <коммит-или-тег>         # или: git checkout main
+# затем повторите шаги сборки и копирования выше
+```
+
+Чтобы потом вернуться к последней версии: `git checkout main && git pull --ff-only`.
+
 ## Команды консоли
 
 Все команды требуют право `@css/root` (консоль сервера разрешена всегда).
