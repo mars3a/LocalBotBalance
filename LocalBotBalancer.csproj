@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>LocalBotBalancer</AssemblyName>
+    <RootNamespace>LocalBotBalancer</RootNamespace>
+    <!-- NuGet fallback version. Override with: dotnet build -p:CSSharpVersion=x.y.z
+         It should match the CounterStrikeSharp version installed on your server. -->
+    <CSSharpVersion Condition="'$(CSSharpVersion)' == ''">1.0.371</CSSharpVersion>
+  </PropertyGroup>
+
+  <!-- Preferred: build against the exact API DLL installed on the server.
+       Set CSSHARP_PATH to the folder that contains CounterStrikeSharp.API.dll. -->
+  <ItemGroup Condition="'$(CSSHARP_PATH)' != ''">
+    <Reference Include="CounterStrikeSharp.API">
+      <HintPath>$(CSSHARP_PATH)/CounterStrikeSharp.API.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Fallback when CSSHARP_PATH is not set: NuGet package (compile-time only, not copied to output). -->
+  <ItemGroup Condition="'$(CSSHARP_PATH)' == ''">
+    <PackageReference Include="CounterStrikeSharp.API" Version="$(CSSharpVersion)" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>
