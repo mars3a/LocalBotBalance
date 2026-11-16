@@ -115,7 +115,6 @@ dotnet --info
 
 ```bash
 find /home -path '*/addons/counterstrikesharp/api/CounterStrikeSharp.API.dll' 2>/dev/null
-cd LocalBotBalancer
 CSSHARP_PATH=/home/steam/cs2/game/csgo/addons/counterstrikesharp/api dotnet build -c Release
 ```
 
@@ -125,7 +124,6 @@ CSSHARP_PATH=/home/steam/cs2/game/csgo/addons/counterstrikesharp/api dotnet buil
 совпадающую с сервером:
 
 ```bash
-cd LocalBotBalancer
 dotnet build -c Release -p:CSSharpVersion=1.0.371
 ```
 
