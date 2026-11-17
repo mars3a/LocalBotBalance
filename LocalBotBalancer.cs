@@ -49,7 +49,7 @@ public sealed class PluginConfig : BasePluginConfig
 public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginConfig>
 {
     public override string ModuleName => "LocalBotBalancer";
-    public override string ModuleVersion => "1.2.0";
+    public override string ModuleVersion => "1.2.2";
     public override string ModuleAuthor => "Local server";
     public override string ModuleDescription => "Round-safe human/bot team balancing for a private CS2 server.";
 
@@ -223,17 +223,33 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
         var currentBots = players.Count(p => p.IsBot);
         var nonTeamBots = currentBots - botsCt.Count - botsT.Count;
 
-        // bot_add/bot_kick issued from the server console adjust bot_quota by themselves, so a
-        // quota equal to the bot count is the plugin's own bookkeeping. Anything else means
-        // another quota manager is active.
+        // bot_add/bot_kick issued from the server console adjust bot_quota by themselves. The engine
+        // may keep fewer bots than the quota while humans connect, choose or join a team, so a
+        // higher quota is expected and must not be forced down (that makes the engine kick a bot
+        // the plugin then re-adds). With nobody on a team the engine kicks bots without lowering
+        // the quota (bot_join_after_player), so a stale quota is synced to the bot count there.
         var botQuota = GetBotQuota();
-        if (botQuota != 0 && botQuota != currentBots)
+        if (!botQuota.HasValue)
         {
-            WarnOnce("Skipping bot changes: bot_quota is " +
-                     (botQuota.HasValue ? botQuota.Value.ToString() : "unavailable") +
-                     $" but {currentBots} bot(s) are present; set bot_quota 0, bot_quota_mode normal, " +
-                     "and disable other bot quota managers.");
+            WarnOnce("Skipping bot changes: bot_quota is unavailable.");
             return;
+        }
+        if (botQuota.Value != 0 && botQuota.Value != currentBots)
+        {
+            if (humansCt + humansT == 0)
+            {
+                Logger.LogInformation("Syncing bot_quota {Quota} to the current bot count {Bots}.",
+                    botQuota.Value, currentBots);
+                Server.ExecuteCommand($"bot_quota {currentBots}");
+                botQuota = currentBots;
+            }
+            else if (botQuota.Value < currentBots)
+            {
+                WarnOnce($"Skipping bot changes: bot_quota is {botQuota.Value} but {currentBots} bot(s) " +
+                         "are present; set bot_quota 0, bot_quota_mode normal, and disable other bot " +
+                         "quota managers.");
+                return;
+            }
         }
 
         var maxSlots = GetMatchCap();
@@ -280,8 +296,9 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
             {
                 var attempt = _removalAttempts++;
                 var kicked = RemoveBots(botsCt, excessCt, attempt) + RemoveBots(botsT, excessT, attempt);
-                // Keep the engine's quota manager from re-adding bots kicked by userid.
-                if (botQuota != 0) Server.ExecuteCommand($"bot_quota {Math.Max(0, currentBots - kicked)}");
+                // bot_kick lowers bot_quota itself; kickid does not, and the engine would re-add the bot.
+                if (attempt > 0 && botQuota > 0)
+                    Server.ExecuteCommand($"bot_quota {Math.Max(0, botQuota.Value - kicked)}");
                 // Recount shortly; additions happen in that next pass.
                 AddTimer(0.2f, QueueReconcile, TimerFlags.STOP_ON_MAPCHANGE);
                 return;
