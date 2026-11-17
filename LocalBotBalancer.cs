@@ -94,6 +94,11 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
 
+        // A late load on a server without humans on teams must still fill at once for the first one.
+        if (hotReload)
+            _awaitingFirstHuman = !GetPlayers().Any(p =>
+                !p.IsBot && p.Team is CsTeam.CounterTerrorist or CsTeam.Terrorist);
+
         AddTimer(5.0f, Poll, TimerFlags.REPEAT);
         Logger.LogInformation("Loaded (hotReload={HotReload}).", hotReload);
     }
