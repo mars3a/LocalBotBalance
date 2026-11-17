@@ -223,18 +223,17 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
         var currentBots = players.Count(p => p.IsBot);
         var nonTeamBots = currentBots - botsCt.Count - botsT.Count;
 
-        // bot_add/bot_kick issued from the server console adjust bot_quota by themselves, so a
-        // quota equal to the bot count is the plugin's own bookkeeping. While humans are still
-        // choosing a team the engine keeps one bot fewer than the quota for each of them, so that
-        // gap is expected too. With nobody on a team the engine kicks bots without lowering the
-        // quota (bot_join_after_player), so a stale quota is synced to the bot count there.
+        // bot_add/bot_kick issued from the server console adjust bot_quota by themselves. The engine
+        // may keep fewer bots than the quota while humans connect, choose or join a team, so a
+        // higher quota is expected and must not be forced down (that makes the engine kick a bot
+        // the plugin then re-adds). With nobody on a team the engine kicks bots without lowering
+        // the quota (bot_join_after_player), so a stale quota is synced to the bot count there.
         var botQuota = GetBotQuota();
         if (!botQuota.HasValue)
         {
             WarnOnce("Skipping bot changes: bot_quota is unavailable.");
             return;
         }
-        var pendingHumans = currentHumans - humansCt - humansT;
         if (botQuota.Value != 0 && botQuota.Value != currentBots)
         {
             if (humansCt + humansT == 0)
@@ -244,11 +243,11 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
                 Server.ExecuteCommand($"bot_quota {currentBots}");
                 botQuota = currentBots;
             }
-            else if (botQuota.Value < currentBots || botQuota.Value > currentBots + pendingHumans)
+            else if (botQuota.Value < currentBots)
             {
                 WarnOnce($"Skipping bot changes: bot_quota is {botQuota.Value} but {currentBots} bot(s) " +
-                         $"are present ({pendingHumans} human(s) choosing a team); set bot_quota 0, " +
-                         "bot_quota_mode normal, and disable other bot quota managers.");
+                         "are present; set bot_quota 0, bot_quota_mode normal, and disable other bot " +
+                         "quota managers.");
                 return;
             }
         }

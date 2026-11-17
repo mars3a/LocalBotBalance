@@ -6,11 +6,11 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 
 ## What changed in 1.2.2
 
-- While a human is choosing a team, CS2 keeps one bot fewer than `bot_quota`
-  for them. 1.2.1 treated that gap as a stale quota and lowered it, so the
+- While humans connect, choose or join a team, CS2 keeps fewer bots than
+  `bot_quota`. 1.2.1 treated that gap as a stale quota and lowered it, so the
   engine kicked a bot, the plugin re-added it, and the joining human could not
-  pick a team. The gap is now accepted, and the quota is synced only while no
-  human is on a team.
+  pick a team. A quota above the bot count is now accepted, and the quota is
+  synced only while no human is on a team.
 - After `bot_kick` (which lowers `bot_quota` itself) the plugin no longer
   rewrites the quota; it lowers it only after the `kickid` fallback.
 
@@ -86,9 +86,9 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
   `css_lbb_enable 0`.
 - Does not move human players.
 - `MaximumBots` is a global cap.
-- `bot_quota` must be `0`, equal to the current number of bots (console
-  `bot_add`/`bot_kick` change the quota by themselves), or larger by at most the
-  number of humans still choosing a team. With no human on a team, any other
+- `bot_quota` must be `0` or at least the current number of bots (console
+  `bot_add`/`bot_kick` change the quota by themselves, and CS2 keeps fewer bots
+  than the quota while humans connect or join a team). With no human on a team, any other
   value is synced to the bot count; otherwise the plugin skips bot changes and
   logs a warning. Disable any other bot quota/management
   plugin; those cannot be detected automatically and would fight the plugin.
