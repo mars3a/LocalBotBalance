@@ -1,8 +1,46 @@
-# LocalBotBalancer 1.1.0
+# LocalBotBalancer 1.2.2
 
 [Русская версия](README.ru.md)
 
 CounterStrikeSharp C# plugin prototype for a private CS2 server.
+
+## What changed in 1.2.2
+
+- While humans connect, choose or join a team, CS2 keeps fewer bots than
+  `bot_quota`. 1.2.1 treated that gap as a stale quota and lowered it, so the
+  engine kicked a bot, the plugin re-added it, and the joining human could not
+  pick a team. A quota above the bot count is now accepted, and the quota is
+  synced only while no human is on a team.
+- After `bot_kick` (which lowers `bot_quota` itself) the plugin no longer
+  rewrites the quota; it lowers it only after the `kickid` fallback.
+
+## What changed in 1.2.1
+
+- A `bot_quota` that does not match the bot count is synced to the actual
+  count instead of stopping the plugin. On CS2 the engine kicks bots without
+  lowering the quota when the last human leaves (`bot_join_after_player 1`),
+  which left 1.2.0 stuck with the warning "bot_quota is N but 0 bot(s) are
+  present".
+- Verified on a CS2 server (CounterStrikeSharp 1.0.380): console
+  `bot_add_ct`/`bot_add_t` raise `bot_quota`, `bot_kick` lowers it.
+
+## What changed in 1.2.0
+
+- No bots while no human is on a team. When the first human joins a team, the
+  teams are filled with bots immediately, without waiting for round end. After
+  that, bots are adjusted at round end as before. When the last human leaves,
+  all bots are removed.
+- Joining a team and disconnecting trigger a recount right away (in addition
+  to the 5-second poll).
+- `bot_quota` equal to the current bot count is accepted: `bot_add`/`bot_kick`
+  issued from the server console change `bot_quota` themselves, which used to
+  stop the plugin after its first fill.
+- Bot removal uses `bot_kick "name"` first and falls back to `kickid <userid>`;
+  after a kick the plugin keeps `bot_quota` in line with the bot count so the
+  engine does not re-add kicked bots.
+- Failed removals are retried every 5 seconds, also in warmup and on an empty
+  server.
+- Pending timers are dropped on map change.
 
 ## What changed in 1.1.0
 
@@ -28,8 +66,10 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 
 - **Safe window.** With `ApplyOnlyBetweenRounds=true`, bots are changed only
   when one of these holds: a round has ended and the next one has not started;
-  the server is in warmup; or no human is connected. Loading or hot-reloading
-  during a live round does not assume the round is safe.
+  the server is in warmup; no human is connected; or the first human has just
+  joined a team on a server where no human was on a team. Loading or
+  hot-reloading during a live round does not assume the round is safe.
+- No human on CT/T (empty server, or only spectators) means no bots.
 - Counts human CT/T players separately from bots.
 - With `MaxPlayers=10` and `FillEmptySlots=true`, targets five players per
   team, counting humans and bots. `MaxPlayers` is the plugin's match cap, not the
@@ -46,12 +86,16 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
   `css_lbb_enable 0`.
 - Does not move human players.
 - `MaximumBots` is a global cap.
-- The plugin makes no bot changes unless it can read `bot_quota` and its value is
-  `0`. Disable any other bot quota/management plugin as well; those cannot be
-  detected automatically. The plugin does not change `bot_quota`.
+- `bot_quota` must be `0` or at least the current number of bots (console
+  `bot_add`/`bot_kick` change the quota by themselves, and CS2 keeps fewer bots
+  than the quota while humans connect or join a team). With no human on a team, any other
+  value is synced to the bot count; otherwise the plugin skips bot changes and
+  logs a warning. Disable any other bot quota/management
+  plugin; those cannot be detected automatically and would fight the plugin.
 - Adds all currently needed bots in one reconciliation, subject to team targets,
   free match slots, and `MaximumBots`.
-- Recommended server settings: `bot_quota 0`, `mp_autoteambalance 0` (the engine
+- Recommended server settings: `bot_quota 0`, `bot_quota_mode normal`,
+  `mp_autoteambalance 0` (the engine
   must not move humans behind the plugin's back), and a `mp_limitteams` value
   that does not block humans from joining a bot-filled team.
 
@@ -59,7 +103,9 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
 
 With `MaxPlayers=10`, `FillEmptySlots=true`, and
 `ReservedHumanSlotsPerTeam=1`:
-- No humans => 4 bots per team, leaving one place on each team.
+- No humans on teams => no bots.
+- The first human joins a team => bots are added at once (below); later
+  changes happen at round end.
 - 1 human CT and no human T => 3 CT bots and 4 T bots; one place remains open
   on each team.
 - 1 human on each team => 3 bots per team; either team still has room for one
@@ -235,11 +281,11 @@ In chat, use the `!` prefix, for example `!lbb_status`.
 ## Test checklist
 
 1. Start with an empty server and check the server log for plugin lines.
-2. Run `css_lbb_status`. With no humans, bots should be added even though no
-   round has ended yet.
+2. Run `css_lbb_status`. With no humans on teams, there must be no bots.
 3. Keep `bot_quota 0` and disable other bot managers. With
-   `ReservedHumanSlotsPerTeam=1`, join as one human. At round end, verify each
-   team has one open place for a human.
+   `ReservedHumanSlotsPerTeam=1`, join a team as one human. Within a second,
+   verify bots are added and each team has one open place for a human.
+   Run `css_lbb_status` again: `bot_quota` must be `0` or equal to the bot count.
 4. Join another human on either team. At the next round end, verify the joining
    team still has one open place and the match remains within the 10-player cap.
 5. Add humans to both teams and verify that bots are removed as needed to
@@ -249,8 +295,9 @@ In chat, use the `!` prefix, for example `!lbb_status`.
    change until round end.
 8. Kill one human during a round: no bot should be added immediately. At round
    end, verify reconciliation occurs.
-9. Test disconnects and map changes.
-10. Check that bots are actually removed with `kickid`. To test the fallback,
+9. Test disconnects and map changes. When the last human leaves, all bots must
+   be removed.
+10. Check that bots are actually removed with `bot_kick`. To test the fallback,
     watch the log: if removal fails you should see a single warning after 3
     attempts, and bots for the other team must still be added.
 11. As a non-admin player, try `!lbb_reconcile`; it must be denied.
@@ -272,15 +319,22 @@ The config in `configs/plugins/LocalBotBalancer/` can be deleted as well.
 
 - `bot_add_ct`, `bot_add_t`, `kickid <userid>` and `bot_kick "bot name"` must be
   accepted by the exact current CS2 server build. Bot removal by name depends on
-  the server's `bot_kick` implementation and unique bot names; that is why it is
-  only the fallback.
+  the server's `bot_kick` implementation and unique bot names; `kickid` is the
+  fallback.
 - Warmup detection reads `CCSGameRules.WarmupPeriod` through the `cs_gamerules`
   entity. If your API version names these differently, the build will fail on
   that member; compare with your installed API.
 - The plugin controls bot counts, not bot AI skill beyond the server
   `bot_difficulty` cvar.
 - Other plugins or external scripts that manage bots cannot be detected. Keep
-  them disabled while this plugin is managing bots. A nonzero or unreadable
-  `bot_quota` causes the plugin to skip all bot changes (and logs a warning).
-- Version 1.1.0 has not been compiled or run yet. Build it and run the checklist
-  above on a test copy of the server first.
+  them disabled while this plugin is managing bots. An unreadable or unexpected
+  `bot_quota` causes the plugin to skip bot changes (and logs a warning).
+- Version 1.2.2 builds against CounterStrikeSharp.API 1.0.371; 1.2.0 was run on
+  a CS2 server with CounterStrikeSharp 1.0.380, but not every checklist item has
+  been verified yet. Run the checklist above on a test copy of the server
+  first.
+
+## License
+
+Released under the [MIT License](LICENSE). CounterStrikeSharp itself is
+GPL-3.0 with an exception that allows plugins to be licensed under MIT.
