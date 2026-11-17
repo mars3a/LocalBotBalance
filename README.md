@@ -333,3 +333,8 @@ The config in `configs/plugins/LocalBotBalancer/` can be deleted as well.
   a CS2 server with CounterStrikeSharp 1.0.380, but not every checklist item has
   been verified yet. Run the checklist above on a test copy of the server
   first.
+
+## License
+
+Released under the [MIT License](LICENSE). CounterStrikeSharp itself is
+GPL-3.0 with an exception that allows plugins to be licensed under MIT.
