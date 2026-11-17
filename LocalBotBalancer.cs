@@ -49,7 +49,7 @@ public sealed class PluginConfig : BasePluginConfig
 public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginConfig>
 {
     public override string ModuleName => "LocalBotBalancer";
-    public override string ModuleVersion => "1.1.0";
+    public override string ModuleVersion => "1.2.0";
     public override string ModuleAuthor => "Local server";
     public override string ModuleDescription => "Round-safe human/bot team balancing for a private CS2 server.";
 
@@ -60,6 +60,7 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
 
     private bool _enabled = true;          // runtime switch (css_lbb_enable); initialised from config
     private bool _safeToApply;             // true between round_end and the next round_start
+    private bool _awaitingFirstHuman;      // no human on a team yet: the first one triggers an immediate fill
     private bool _applyQueued;
     private int _removalAttempts;
     private string? _lastDebugLine;
@@ -89,7 +90,14 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
     {
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
+        RegisterEventHandler<EventPlayerTeam>(OnPlayerTeam);
+        RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
+
+        // A late load on a server without humans on teams must still fill at once for the first one.
+        if (hotReload)
+            _awaitingFirstHuman = !GetPlayers().Any(p =>
+                !p.IsBot && p.Team is CsTeam.CounterTerrorist or CsTeam.Terrorist);
 
         AddTimer(5.0f, Poll, TimerFlags.REPEAT);
         Logger.LogInformation("Loaded (hotReload={HotReload}).", hotReload);
@@ -105,6 +113,7 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
     private void OnMapStart(string mapName)
     {
         _safeToApply = false;
+        _awaitingFirstHuman = true;
         _applyQueued = false;
         _removalAttempts = 0;
         _lastDebugLine = null;
@@ -128,23 +137,38 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
         return HookResult.Continue;
     }
 
+    private HookResult OnPlayerTeam(EventPlayerTeam ev, GameEventInfo info)
+    {
+        QueueReconcile();
+        return HookResult.Continue;
+    }
+
+    private HookResult OnPlayerDisconnect(EventPlayerDisconnect ev, GameEventInfo info)
+    {
+        QueueReconcile();
+        return HookResult.Continue;
+    }
+
     private void Poll()
     {
         if (!_enabled) return;
+        // Retry exhausted removals periodically even when no round events arrive (warmup, empty server).
+        if (_removalAttempts >= MaxRemovalAttempts) _removalAttempts = 0;
         QueueReconcile();
     }
 
+    // Safety is checked when the timer fires, not here: team changes and disconnects
+    // are not yet reflected in the player list when their events arrive.
     private void QueueReconcile()
     {
         if (_applyQueued || !_enabled) return;
-        if (!IsSafeToApply(GetPlayers())) return;
 
         _applyQueued = true;
         AddTimer(Config.ReconcileDelaySeconds, () =>
         {
             _applyQueued = false;
             if (_enabled) Reconcile();
-        });
+        }, TimerFlags.STOP_ON_MAPCHANGE);
     }
 
     // ---------------------------------------------------------------- safety window
@@ -153,13 +177,15 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
     /// Bot changes are allowed when ApplyOnlyBetweenRounds is off, or when
     /// (a) a round has ended and the next one has not started, or
     /// (b) the server is in warmup, or
-    /// (c) no human is connected, so nobody can be disturbed.
-    /// Cases (b) and (c) cover a fresh/empty server where round_end may never fire.
+    /// (c) no human is connected, so nobody can be disturbed, or
+    /// (d) the first human has just joined a team on a server without humans on teams.
+    /// Cases (b)-(d) cover a fresh/empty server where round_end may never fire.
     /// </summary>
     private bool IsSafeToApply(IReadOnlyCollection<CCSPlayerController> players)
     {
         if (!Config.ApplyOnlyBetweenRounds) return true;
         if (_safeToApply) return true;
+        if (_awaitingFirstHuman) return true;
         if (IsWarmup()) return true;
         return !players.Any(p => !p.IsBot);
     }
@@ -183,19 +209,13 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
     private void Reconcile()
     {
         var players = GetPlayers();
-        if (!IsSafeToApply(players)) return;
-
-        var botQuota = GetBotQuota();
-        if (botQuota != 0)
-        {
-            WarnOnce("Skipping bot changes: bot_quota is " +
-                     (botQuota.HasValue ? botQuota.Value.ToString() : "unavailable") +
-                     "; set it to 0 and disable other bot quota managers.");
-            return;
-        }
 
         var humansCt = players.Count(p => !p.IsBot && p.Team == CsTeam.CounterTerrorist);
         var humansT = players.Count(p => !p.IsBot && p.Team == CsTeam.Terrorist);
+        if (humansCt + humansT == 0) _awaitingFirstHuman = true;
+
+        if (!IsSafeToApply(players)) return;
+
         var botsCt = players.Where(p => p.IsBot && p.Team == CsTeam.CounterTerrorist).ToList();
         var botsT = players.Where(p => p.IsBot && p.Team == CsTeam.Terrorist).ToList();
 
@@ -203,15 +223,30 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
         var currentBots = players.Count(p => p.IsBot);
         var nonTeamBots = currentBots - botsCt.Count - botsT.Count;
 
+        // bot_add/bot_kick issued from the server console adjust bot_quota by themselves, so a
+        // quota equal to the bot count is the plugin's own bookkeeping. Anything else means
+        // another quota manager is active.
+        var botQuota = GetBotQuota();
+        if (botQuota != 0 && botQuota != currentBots)
+        {
+            WarnOnce("Skipping bot changes: bot_quota is " +
+                     (botQuota.HasValue ? botQuota.Value.ToString() : "unavailable") +
+                     $" but {currentBots} bot(s) are present; set bot_quota 0, bot_quota_mode normal, " +
+                     "and disable other bot quota managers.");
+            return;
+        }
+
         var maxSlots = GetMatchCap();
         var halfCap = maxSlots / 2;
 
         // Target number of bot-or-human "places to fill" per team.
         // FillEmptySlots=true : fill up to half the cap, keeping the reserved places free.
         // FillEmptySlots=false: only even out the humans (no reservation, no filling).
-        var botTeamTarget = Config.FillEmptySlots
-            ? Math.Max(0, halfCap - Config.ReservedHumanSlotsPerTeam)
-            : Math.Min(Math.Max(humansCt, humansT), halfCap);
+        // No human on a team: no bots at all.
+        var botTeamTarget = humansCt + humansT == 0 ? 0
+            : Config.FillEmptySlots
+                ? Math.Max(0, halfCap - Config.ReservedHumanSlotsPerTeam)
+                : Math.Min(Math.Max(humansCt, humansT), halfCap);
 
         var availableBotSlots = Math.Max(0, maxSlots - currentHumans - nonTeamBots);
         var targetBotsCt = Config.BalanceTeams ? Math.Max(0, botTeamTarget - humansCt) : 0;
@@ -244,10 +279,11 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
             else if (_removalAttempts < MaxRemovalAttempts)
             {
                 var attempt = _removalAttempts++;
-                RemoveBots(botsCt, excessCt, attempt);
-                RemoveBots(botsT, excessT, attempt);
+                var kicked = RemoveBots(botsCt, excessCt, attempt) + RemoveBots(botsT, excessT, attempt);
+                // Keep the engine's quota manager from re-adding bots kicked by userid.
+                if (botQuota != 0) Server.ExecuteCommand($"bot_quota {Math.Max(0, currentBots - kicked)}");
                 // Recount shortly; additions happen in that next pass.
-                AddTimer(0.2f, QueueReconcile);
+                AddTimer(0.2f, QueueReconcile, TimerFlags.STOP_ON_MAPCHANGE);
                 return;
             }
             else
@@ -279,6 +315,8 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
             }
         }
 
+        if (humansCt + humansT > 0) _awaitingFirstHuman = false;
+
         DebugLog(
             $"Humans CT/T={humansCt}/{humansT}; bots CT/T={botsCt.Count}/{botsT.Count}; " +
             $"target bots CT/T={desiredCt}/{desiredT}; reserved/team={Config.ReservedHumanSlotsPerTeam}; " +
@@ -286,17 +324,18 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
     }
 
     /// <summary>
-    /// Removes up to <paramref name="excess"/> bots. First attempt uses "kickid &lt;userid&gt;" (no name
-    /// parsing, so no duplicate-name or special-character problems). If that did not work, retries
-    /// fall back to "bot_kick" by sanitised name.
+    /// Removes up to <paramref name="excess"/> bots and returns how many kicks were issued.
+    /// First attempt uses "bot_kick" by sanitised name, which also lowers bot_quota. If that did
+    /// not work, retries fall back to "kickid &lt;userid&gt;".
     /// </summary>
-    private void RemoveBots(List<CCSPlayerController> bots, int excess, int attempt)
+    private static int RemoveBots(List<CCSPlayerController> bots, int excess, int attempt)
     {
-        if (excess <= 0) return;
+        if (excess <= 0) return 0;
 
+        var kicked = 0;
         foreach (var bot in bots.Where(b => b.IsValid).Take(excess))
         {
-            if (attempt == 0 && bot.UserId is int userId)
+            if (attempt > 0 && bot.UserId is int userId)
             {
                 Server.ExecuteCommand($"kickid {userId}");
             }
@@ -304,7 +343,9 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
             {
                 Server.ExecuteCommand($"bot_kick \"{SanitizeName(bot.PlayerName)}\"");
             }
+            kicked++;
         }
+        return kicked;
     }
 
     /// <summary>Strips characters that could break out of a quoted console argument.</summary>
@@ -367,7 +408,8 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
 
         command.ReplyToCommand(
             $"[LBB] Humans CT/T {hct}/{ht}; bots CT/T {bct}/{bt}; " +
-            $"safeNow={IsSafeToApply(players)} (betweenRounds={_safeToApply}, warmup={IsWarmup()}); " +
+            $"safeNow={IsSafeToApply(players)} (betweenRounds={_safeToApply}, warmup={IsWarmup()}, " +
+            $"awaitingFirstHuman={_awaitingFirstHuman}); " +
             $"bot_quota={botQuota?.ToString() ?? "unavailable"}; enabled={_enabled}");
     }
 
