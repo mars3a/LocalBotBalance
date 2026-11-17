@@ -1,8 +1,18 @@
-# LocalBotBalancer 1.2.1
+# LocalBotBalancer 1.2.2
 
 [Русская версия](README.ru.md)
 
 CounterStrikeSharp C# plugin prototype for a private CS2 server.
+
+## What changed in 1.2.2
+
+- While a human is choosing a team, CS2 keeps one bot fewer than `bot_quota`
+  for them. 1.2.1 treated that gap as a stale quota and lowered it, so the
+  engine kicked a bot, the plugin re-added it, and the joining human could not
+  pick a team. The gap is now accepted, and the quota is synced only while no
+  human is on a team.
+- After `bot_kick` (which lowers `bot_quota` itself) the plugin no longer
+  rewrites the quota; it lowers it only after the `kickid` fallback.
 
 ## What changed in 1.2.1
 
@@ -76,10 +86,11 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
   `css_lbb_enable 0`.
 - Does not move human players.
 - `MaximumBots` is a global cap.
-- The plugin owns `bot_quota`: if it is neither `0` nor equal to the current
-  number of bots, the plugin sets it to the bot count (console
-  `bot_add`/`bot_kick` change the quota by themselves). It makes no bot changes
-  only if `bot_quota` cannot be read. Disable any other bot quota/management
+- `bot_quota` must be `0`, equal to the current number of bots (console
+  `bot_add`/`bot_kick` change the quota by themselves), or larger by at most the
+  number of humans still choosing a team. With no human on a team, any other
+  value is synced to the bot count; otherwise the plugin skips bot changes and
+  logs a warning. Disable any other bot quota/management
   plugin; those cannot be detected automatically and would fight the plugin.
 - Adds all currently needed bots in one reconciliation, subject to team targets,
   free match slots, and `MaximumBots`.
@@ -316,9 +327,9 @@ The config in `configs/plugins/LocalBotBalancer/` can be deleted as well.
 - The plugin controls bot counts, not bot AI skill beyond the server
   `bot_difficulty` cvar.
 - Other plugins or external scripts that manage bots cannot be detected. Keep
-  them disabled while this plugin is managing bots. An unreadable `bot_quota`
-  causes the plugin to skip all bot changes (and logs a warning).
-- Version 1.2.1 builds against CounterStrikeSharp.API 1.0.371; 1.2.0 was run on
+  them disabled while this plugin is managing bots. An unreadable or unexpected
+  `bot_quota` causes the plugin to skip bot changes (and logs a warning).
+- Version 1.2.2 builds against CounterStrikeSharp.API 1.0.371; 1.2.0 was run on
   a CS2 server with CounterStrikeSharp 1.0.380, but not every checklist item has
   been verified yet. Run the checklist above on a test copy of the server
   first.
