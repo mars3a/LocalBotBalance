@@ -1,8 +1,18 @@
-# LocalBotBalancer 1.2.0
+# LocalBotBalancer 1.2.1
 
 [Русская версия](README.ru.md)
 
 CounterStrikeSharp C# plugin prototype for a private CS2 server.
+
+## What changed in 1.2.1
+
+- A `bot_quota` that does not match the bot count is synced to the actual
+  count instead of stopping the plugin. On CS2 the engine kicks bots without
+  lowering the quota when the last human leaves (`bot_join_after_player 1`),
+  which left 1.2.0 stuck with the warning "bot_quota is N but 0 bot(s) are
+  present".
+- Verified on a CS2 server (CounterStrikeSharp 1.0.380): console
+  `bot_add_ct`/`bot_add_t` raise `bot_quota`, `bot_kick` lowers it.
 
 ## What changed in 1.2.0
 
@@ -66,11 +76,11 @@ CounterStrikeSharp C# plugin prototype for a private CS2 server.
   `css_lbb_enable 0`.
 - Does not move human players.
 - `MaximumBots` is a global cap.
-- The plugin makes no bot changes unless it can read `bot_quota` and its value is
-  `0` or equal to the current number of bots (console `bot_add`/`bot_kick`
-  change the quota by themselves). Disable any other bot quota/management plugin
-  as well; those cannot be detected automatically. The plugin sets `bot_quota`
-  only after kicking, to match the remaining bot count.
+- The plugin owns `bot_quota`: if it is neither `0` nor equal to the current
+  number of bots, the plugin sets it to the bot count (console
+  `bot_add`/`bot_kick` change the quota by themselves). It makes no bot changes
+  only if `bot_quota` cannot be read. Disable any other bot quota/management
+  plugin; those cannot be detected automatically and would fight the plugin.
 - Adds all currently needed bots in one reconciliation, subject to team targets,
   free match slots, and `MaximumBots`.
 - Recommended server settings: `bot_quota 0`, `bot_quota_mode normal`,
@@ -300,17 +310,15 @@ The config in `configs/plugins/LocalBotBalancer/` can be deleted as well.
   accepted by the exact current CS2 server build. Bot removal by name depends on
   the server's `bot_kick` implementation and unique bot names; `kickid` is the
   fallback.
-- The way console `bot_add`/`bot_kick` change `bot_quota` is taken from the
-  CS:GO engine and has not been verified on CS2; check `css_lbb_status` after
-  the first fill.
 - Warmup detection reads `CCSGameRules.WarmupPeriod` through the `cs_gamerules`
   entity. If your API version names these differently, the build will fail on
   that member; compare with your installed API.
 - The plugin controls bot counts, not bot AI skill beyond the server
   `bot_difficulty` cvar.
 - Other plugins or external scripts that manage bots cannot be detected. Keep
-  them disabled while this plugin is managing bots. A nonzero or unreadable
-  `bot_quota` causes the plugin to skip all bot changes (and logs a warning).
-- Version 1.2.0 builds against CounterStrikeSharp.API 1.0.371 but has not been
-  run on a server yet. Run the checklist above on a test copy of the server
+  them disabled while this plugin is managing bots. An unreadable `bot_quota`
+  causes the plugin to skip all bot changes (and logs a warning).
+- Version 1.2.1 builds against CounterStrikeSharp.API 1.0.371; 1.2.0 was run on
+  a CS2 server with CounterStrikeSharp 1.0.380, but not every checklist item has
+  been verified yet. Run the checklist above on a test copy of the server
   first.

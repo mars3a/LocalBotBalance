@@ -49,7 +49,7 @@ public sealed class PluginConfig : BasePluginConfig
 public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginConfig>
 {
     public override string ModuleName => "LocalBotBalancer";
-    public override string ModuleVersion => "1.2.0";
+    public override string ModuleVersion => "1.2.1";
     public override string ModuleAuthor => "Local server";
     public override string ModuleDescription => "Round-safe human/bot team balancing for a private CS2 server.";
 
@@ -223,17 +223,22 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
         var currentBots = players.Count(p => p.IsBot);
         var nonTeamBots = currentBots - botsCt.Count - botsT.Count;
 
-        // bot_add/bot_kick issued from the server console adjust bot_quota by themselves, so a
-        // quota equal to the bot count is the plugin's own bookkeeping. Anything else means
-        // another quota manager is active.
+        // bot_add/bot_kick issued from the server console adjust bot_quota by themselves, and the
+        // engine can kick bots without lowering it (bot_join_after_player once the last human
+        // leaves). The plugin owns the bot count, so a stale quota is synced to the actual count;
+        // otherwise the engine would re-add or keep bots behind the plugin's back.
         var botQuota = GetBotQuota();
-        if (botQuota != 0 && botQuota != currentBots)
+        if (!botQuota.HasValue)
         {
-            WarnOnce("Skipping bot changes: bot_quota is " +
-                     (botQuota.HasValue ? botQuota.Value.ToString() : "unavailable") +
-                     $" but {currentBots} bot(s) are present; set bot_quota 0, bot_quota_mode normal, " +
-                     "and disable other bot quota managers.");
+            WarnOnce("Skipping bot changes: bot_quota is unavailable.");
             return;
+        }
+        if (botQuota.Value != 0 && botQuota.Value != currentBots)
+        {
+            Logger.LogInformation("Syncing bot_quota {Quota} to the current bot count {Bots}.",
+                botQuota.Value, currentBots);
+            Server.ExecuteCommand($"bot_quota {currentBots}");
+            botQuota = currentBots;
         }
 
         var maxSlots = GetMatchCap();
