@@ -147,8 +147,8 @@ public sealed class LocalBotBalancerPlugin : BasePlugin, IPluginConfig<PluginCon
     private void Poll()
     {
         if (!_enabled) return;
-        // Retry failed removals periodically even when no round events arrive (warmup, empty server).
-        _removalAttempts = 0;
+        // Retry exhausted removals periodically even when no round events arrive (warmup, empty server).
+        if (_removalAttempts >= MaxRemovalAttempts) _removalAttempts = 0;
         QueueReconcile();
     }
 
